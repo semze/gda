@@ -30,14 +30,16 @@ const views = document.querySelectorAll(".view");
 const darkModeToggle = document.getElementById("darkModeToggle");
 
 // State
-let users = JSON.parse(localStorage.getItem(USERS_KEY)) || {};
-let bounties = JSON.parse(localStorage.getItem(BOUNTIES_KEY)) || [];
-let currentUser = localStorage.getItem(CURRENT_USER_KEY) || null;
+// Prefer remote (Firebase) data. Fall back to localStorage only if Firebase init fails.
+let users = {};
+let bounties = [];
+let currentUser = null;
 let externalAccounts = {}; // loaded from accounts.json (username -> { pin, ... })
 // Firebase runtime
 let firebaseEnabled = false;
 let db = null;
 let auth = null;
+let localFallbackLoaded = false;
 
 // Helpers
 function saveUsers() {
@@ -473,6 +475,31 @@ async function loadExternalAccounts() {
 // Load external accounts early
 loadExternalAccounts();
 
+// Local fallback loader: used when Firebase init fails or offline
+function loadLocalData() {
+    if (localFallbackLoaded) return;
+    try {
+        const storedUsers = localStorage.getItem(USERS_KEY);
+        const storedBounties = localStorage.getItem(BOUNTIES_KEY);
+        const storedCurrent = localStorage.getItem(CURRENT_USER_KEY);
+        users = storedUsers ? JSON.parse(storedUsers) : {};
+        bounties = storedBounties ? JSON.parse(storedBounties) : [];
+        currentUser = storedCurrent || null;
+        localFallbackLoaded = true;
+        if (currentUser && users[currentUser]) {
+            setCurrentUser(currentUser);
+        } else {
+            setCurrentUser(null);
+        }
+        renderBounties();
+    } catch (e) {
+        users = {};
+        bounties = [];
+        currentUser = null;
+        renderBounties();
+    }
+}
+
 // --- Firebase init & realtime ---
 async function initFirebase() {
     try {
@@ -518,7 +545,8 @@ async function initFirebase() {
             if (u && u.email) setCurrentUser(u.email);
         });
     } catch (e) {
-        // ignore init errors
+        // If Firebase fails to initialize (blocked, offline, or rules), fall back to localStorage
+        loadLocalData();
     }
 }
 
@@ -695,14 +723,7 @@ darkModeToggle.addEventListener("click", () => {
     localStorage.setItem(DARK_MODE_KEY, String(!isDark));
 });
 
-// Init
-if (currentUser && users[currentUser]) {
-    setCurrentUser(currentUser);
-} else {
-    setCurrentUser(null);
-}
-
-renderBounties();
+// Initialization: UI will be rendered by Firebase snapshots or local fallback loader.
 
 // Refresh timers every minute
 setInterval(renderBounties, 60 * 1000);
