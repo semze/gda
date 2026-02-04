@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gel-Blast Arena</title>
+    <link rel="stylesheet" href="style-c.css">
+</head>
+<body>
+
+<header>
+    <div class="logo">
+        <h1>Gel-Blast Arena</h1>
+        <span class="tagline">Family bounties, caps, and chaos.</span>
+    </div>
+    <nav>
+        <button class="nav-btn" data-view="bounties">Bounties</button>
+        <button class="nav-btn" data-view="leaderboards">Leaderboards</button>
+        <button class="nav-btn" data-view="profile">Profile</button>
+    </nav>
+    <div class="header-right">
+        <button id="darkModeToggle">🌙</button>
+        <div id="currentUserDisplay" class="user-pill hidden">
+            <div class="avatar" id="avatarCircle"></div>
+            <span id="currentUserName"></span>
+        </div>
+        <button id="loginBtn">Login / Account</button>
+        <button id="newBountyBtn">+ Bounty</button>
+    </div>
+</header>
+
+<main>
+    <!-- Bounties View -->
+    <section id="view-bounties" class="view active">
+        <section class="info">
+            <h2>How It Works</h2>
+            <p>
+                Arena. Bottle caps are currency, bounties are missions,
+                and every weekend battle updates the stats.
+            </p>
+            <ul>
+                <li><strong>Place Bounties:</strong> Logged-in players can place bounties that last up to 3 days.</li>
+                <li><strong>Survive:</strong> If your bounty expires unclaimed, you earn a “Bounty Survived”.</li>
+                <li><strong>Collect:</strong> Tag the target, claim the bounty, and earn a “Bounty Collected”.</li>
+                <li><strong>Climb:</strong> Leaderboards track who’s hunted and who’s unstoppable.</li>
+            </ul>
+        </section>
+
+        <section id="bountySection">
+            <h2 class="sectionTitle">Active Bounties</h2>
+            <section id="bountyList" class="grid"></section>
+        </section>
+    </section>
+
+    <!-- Leaderboards View -->
+    <section id="view-leaderboards" class="view">
+        <h2 class="sectionTitle">Leaderboards</h2>
+        <div class="leaderboard-grid">
+            <div class="leaderboard-card">
+                <h3>🛡️ Bounties Survived</h3>
+                <div id="survivedBars" class="bar-list"></div>
+            </div>
+            <div class="leaderboard-card">
+                <h3>🎯 Bounties Collected</h3>
+                <div id="collectedBars" class="bar-list"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Profile View -->
+    <section id="view-profile" class="view">
+        <h2 class="sectionTitle">Your Profile</h2>
+        <div id="profileCard" class="profile-card">
+            <p>You’re not logged in yet. Use the “Login / Account” button in the header.</p>
+        </div>
+    </section>
+</main>
+
+<!-- Bounty Modal -->
+<div id="bountyModal" class="modal hidden">
+    <div class="modal-content">
+        <h2>Create Bounty</h2>
+
+        <div style="position:relative;">
+            <input id="target" placeholder="Target Username" autocomplete="off">
+            <div id="targetSuggestions" class="suggestions hidden" role="listbox" aria-label="Username suggestions"></div>
+        </div>
+        <input id="reward" placeholder="Reward (Caps)" type="number">
+        <select id="difficulty">
+            <option>Easy</option>
+            <option>Medium</option>
+            <option>Hard</option>
+            <option>Legendary</option>
+        </select>
+
+        <label for="duration" style="font-size:13px;color:var(--muted);margin-top:6px;display:block;">Duration</label>
+        <select id="duration">
+            <option value="6">6 hours</option>
+            <option value="12">12 hours</option>
+            <option value="24">1 day</option>
+            <option value="48">2 days</option>
+            <option value="72" selected>3 days</option>
+        </select>
+        <p class="hint">Choose a duration (min 6 hours, max 3 days).</p>
+
+        <div class="modal-actions">
+            <button id="createBounty">Create</button>
+            <button id="closeBountyModal" class="secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Login Modal -->
+<div id="loginModal" class="modal hidden">
+    <div class="modal-content">
+        <h2>Login / Create Account</h2>
+
+        <input id="loginUsername" placeholder="Username">
+        <input id="loginPin" placeholder="PIN (4 digits)" maxlength="4" type="password">
+
+        <div class="modal-actions">
+            <button id="loginSubmit">Login</button>
+            <button id="createAccount" class="secondary">Create Account</button>
+            <button id="closeLoginModal" class="secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<script src="script-c.js"></script>
+</body>
+</html>
