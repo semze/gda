@@ -34,14 +34,43 @@ let users = JSON.parse(localStorage.getItem(USERS_KEY)) || {};
 let bounties = JSON.parse(localStorage.getItem(BOUNTIES_KEY)) || [];
 let currentUser = localStorage.getItem(CURRENT_USER_KEY) || null;
 let externalAccounts = {}; // loaded from accounts.json (username -> { pin, ... })
+// Firebase runtime
+let firebaseEnabled = false;
+let db = null;
+let auth = null;
 
 // Helpers
 function saveUsers() {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
+async function saveUsersRemote() {
+    if (!firebaseEnabled || !db) return;
+    try {
+        const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js');
+        const promises = Object.keys(users).map(name => setDoc(doc(db, 'users', name), users[name]));
+        await Promise.all(promises);
+    } catch (e) {
+        // ignore remote errors
+    }
+}
+
 function saveBounties() {
     localStorage.setItem(BOUNTIES_KEY, JSON.stringify(bounties));
+}
+
+async function addBountyRemote(bounty) {
+    if (!firebaseEnabled || !db) return;
+    const { addDoc, collection, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js');
+    const data = Object.assign({}, bounty);
+    // prefer server timestamp for createdAt
+    data.createdAt = data.createdAt || Date.now();
+    try {
+        const ref = await addDoc(collection(db, 'bounties'), data);
+        return ref.id;
+    } catch (e) {
+        return null;
+    }
 }
 
 function setCurrentUser(username) {
@@ -212,19 +241,41 @@ function renderBounties() {
         bountyList.appendChild(card);
     });
 
-    bountyList.querySelectorAll("button[data-delete]").forEach(btn => {
-        btn.addEventListener("click", () => {
+    // Delete handlers: support both local index-based and remote doc-id-based
+    bountyList.querySelectorAll("button[data-delete], button[data-delete-id]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-delete-id");
+            if (id && firebaseEnabled && db) {
+                const { deleteDoc, doc } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js');
+                await deleteDoc(doc(db, 'bounties', id));
+                return;
+            }
             const index = parseInt(btn.getAttribute("data-delete"), 10);
-            bounties.splice(index, 1);
-            saveBounties();
-            renderBounties();
+            if (!isNaN(index)) {
+                bounties.splice(index, 1);
+                saveBounties();
+                renderBounties();
+            }
         });
     });
 
-    bountyList.querySelectorAll("button[data-claim]").forEach(btn => {
-        btn.addEventListener("click", () => {
+    bountyList.querySelectorAll("button[data-claim], button[data-claim-id]").forEach(btn => {
+        btn.addEventListener("click", async () => {
             if (!currentUser) {
                 alert("You must be logged in to claim a bounty.");
+                return;
+            }
+            const id = btn.getAttribute("data-claim-id");
+            if (id && firebaseEnabled && db) {
+                const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js');
+                const bountyRef = doc(db, 'bounties', id);
+                await updateDoc(bountyRef, { claimedBy: currentUser });
+                // increment user's collected count remotely
+                try {
+                    const { increment } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js');
+                    const userRef = doc(db, 'users', currentUser);
+                    await updateDoc(userRef, { bountiesCollected: (users[currentUser]?.bountiesCollected || 0) + 1 });
+                } catch (e) {}
                 return;
             }
             const index = parseInt(btn.getAttribute("data-claim"), 10);
@@ -422,6 +473,58 @@ async function loadExternalAccounts() {
 // Load external accounts early
 loadExternalAccounts();
 
+// --- Firebase init & realtime ---
+async function initFirebase() {
+    try {
+        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js');
+        const { getFirestore, collection, onSnapshot } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js');
+        const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js');
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA9jKJPXDcwO6o0ggrvKW9RIBhBEGxEjw4",
+            authDomain: "tgba-d5982.firebaseapp.com",
+            projectId: "tgba-d5982",
+            storageBucket: "tgba-d5982.firebasestorage.app",
+            messagingSenderId: "661091656830",
+            appId: "1:661091656830:web:487766928304f4a353642f",
+            measurementId: "G-QDK08C4PRS"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+        firebaseEnabled = true;
+
+        // users collection live
+        onSnapshot(collection(db, 'users'), snapshot => {
+            const newUsers = {};
+            snapshot.docs.forEach(d => {
+                newUsers[d.id] = d.data();
+            });
+            users = newUsers;
+            saveUsers();
+            renderLeaderboards();
+            renderProfile();
+        });
+
+        // bounties collection live
+        onSnapshot(collection(db, 'bounties'), snapshot => {
+            bounties = snapshot.docs.map(d => Object.assign({ id: d.id }, d.data()));
+            saveBounties();
+            renderBounties();
+        });
+
+        onAuthStateChanged(auth, (u) => {
+            if (u && u.email) setCurrentUser(u.email);
+        });
+    } catch (e) {
+        // ignore init errors
+    }
+}
+
+// kick off firebase init (uses provided config)
+initFirebase();
+
 closeBountyModal.onclick = () => closeModal(bountyModal);
 
 bountyModal.addEventListener("click", (e) => {
@@ -468,7 +571,7 @@ createBountyBtn.onclick = () => {
 
     const expiresAt = createdAt + durationHours * 60 * 60 * 1000;
 
-    bounties.push({
+    const newBounty = {
         target,
         reward: Number(reward),
         issuer: currentUser,
@@ -477,17 +580,27 @@ createBountyBtn.onclick = () => {
         expiresAt,
         claimedBy: null,
         expired: false
-    });
+    };
 
-    saveBounties();
-
-    document.getElementById("target").value = "";
-    document.getElementById("reward").value = "";
-    document.getElementById("difficulty").value = "Easy";
-    if (document.getElementById("duration")) document.getElementById("duration").value = "72";
-
-    closeModal(bountyModal);
-    renderBounties();
+    if (firebaseEnabled && db) {
+        // push to firestore; listener will update UI
+        addBountyRemote(newBounty).then(() => {
+            document.getElementById("target").value = "";
+            document.getElementById("reward").value = "";
+            document.getElementById("difficulty").value = "Easy";
+            if (document.getElementById("duration")) document.getElementById("duration").value = "72";
+            closeModal(bountyModal);
+        });
+    } else {
+        bounties.push(newBounty);
+        saveBounties();
+        document.getElementById("target").value = "";
+        document.getElementById("reward").value = "";
+        document.getElementById("difficulty").value = "Easy";
+        if (document.getElementById("duration")) document.getElementById("duration").value = "72";
+        closeModal(bountyModal);
+        renderBounties();
+    }
 };
 
 // Login modal
